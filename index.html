@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Flip Deck</title>
+<meta name="description" content="Simple flashcards with an auto-flip timer. Type your own cards, flip, shuffle and study.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='6' y='14' width='44' height='32' rx='6' fill='%231B2B63'/%3E%3Crect x='14' y='20' width='44' height='32' rx='6' fill='%233A57F5'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Figtree:wght@400..700&display=swap">
+<style>
+/* Layout: one big card in the middle, timer controls above it, an edit list below. */
+:root {
+  --bg: #E9EDF5;
+  --surface: #FFFFFF;
+  --ink: #14213D;
+  --muted: #5B6785;
+  --line: #C9D2E4;
+  --accent: #3A57F5;
+  --accent-ink: #FFFFFF;
+  --back: #1B2B63;
+  --back-ink: #FFFFFF;
+  --hi: #FFD84D;
+  --danger: #B3261E;
+  --font-display: "Bricolage Grotesque", "Trebuchet MS", system-ui, sans-serif;
+  --font-body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E1424;
+    --surface: #19223A;
+    --ink: #EAF0FF;
+    --muted: #9AA7C7;
+    --line: #2B3858;
+    --accent: #8197FF;
+    --accent-ink: #0E1424;
+    --back: #2B44C9;
+    --back-ink: #FFFFFF;
+    --hi: #FFD84D;
+    --danger: #FF8A80;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E1424;
+  --surface: #19223A;
+  --ink: #EAF0FF;
+  --muted: #9AA7C7;
+  --line: #2B3858;
+  --accent: #8197FF;
+  --accent-ink: #0E1424;
+  --back: #2B44C9;
+  --back-ink: #FFFFFF;
+  --hi: #FFD84D;
+  --danger: #FF8A80;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+  padding-top: calc(28px + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
+
+h1 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(1.9rem, 6vw, 2.6rem);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  margin: 0;
+  text-wrap: balance;
+}
+.sub { margin: 6px 0 0; color: var(--muted); }
+
+/* Timer controls */
+.controls {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 14px 22px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+.secs { display: flex; align-items: center; gap: 10px; }
+.secs label, .check { font-weight: 600; }
+.stepper { display: inline-flex; align-items: stretch; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.stepper button {
+  width: 38px; border: 0; background: transparent; color: var(--ink);
+  font: 600 1.25rem/1 var(--font-body); cursor: pointer;
+}
+.stepper button:hover { background: var(--bg); }
+.stepper input {
+  width: 56px; border: 0; border-inline: 1px solid var(--line);
+  background: var(--surface); color: var(--ink);
+  font: 700 1.1rem/1 var(--font-body); text-align: center; padding: 10px 0;
+  font-variant-numeric: tabular-nums; -moz-appearance: textfield;
+}
+.stepper input::-webkit-outer-spin-button, .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.check input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+/* Stage and card */
+.stage { display: flex; flex-direction: column; gap: 14px; }
+.scene { perspective: 1400px; }
+.card {
+  position: relative; width: 100%; aspect-ratio: 3 / 2; max-width: 100%;
+  cursor: pointer; outline-offset: 4px; border-radius: 20px;
+}
+.inner {
+  position: absolute; inset: 0;
+  transition: transform .6s cubic-bezier(.4, .2, .2, 1);
+  transform-style: preserve-3d;
+}
+.card.flipped .inner { transform: rotateY(180deg); }
+.face {
+  position: absolute; inset: 0;
+  backface-visibility: hidden; -webkit-backface-visibility: hidden;
+  display: flex; padding: 44px 28px 28px;
+  border-radius: 20px; text-align: center; overflow: auto;
+  box-shadow: 0 10px 30px rgba(20, 33, 61, .14);
+}
+.face.front { background: var(--surface); color: var(--ink); border: 2px solid var(--ink); }
+.face.back { background: var(--back); color: var(--back-ink); transform: rotateY(180deg); border: 2px solid var(--back); }
+.tag {
+  position: absolute; top: 16px; left: 20px;
+  font-size: .72rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; opacity: .65;
+}
+.txt {
+  margin: auto; max-width: 100%;
+  font-family: var(--font-display); font-weight: 700; line-height: 1.2;
+  font-size: clamp(1.5rem, 5.4vw, 2.6rem);
+  overflow-wrap: anywhere; white-space: pre-wrap;
+}
+.txt.long { font-size: clamp(1.15rem, 3.8vw, 1.8rem); }
+.txt.xl { font-size: clamp(1rem, 3vw, 1.3rem); font-weight: 600; }
+
+.timerline { display: flex; flex-direction: column; gap: 6px; }
+.track { height: 8px; border-radius: 99px; background: var(--line); overflow: hidden; }
+.bar { height: 100%; width: 100%; background: var(--accent); transform-origin: left center; transform: scaleX(1); }
+.bar.onback { background: var(--hi); }
+.status { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: .92rem; font-variant-numeric: tabular-nums; }
+
+.nav { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.nav .count { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--muted); }
+.btn {
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  font: 600 .98rem/1 var(--font-body); padding: 12px 18px; border-radius: 10px; cursor: pointer;
+}
+.btn:hover { border-color: var(--ink); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn.danger { color: var(--danger); }
+
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+/* Edit list */
+.edit { display: flex; flex-direction: column; gap: 14px; }
+.edit h2 { font-family: var(--font-display); font-size: 1.4rem; margin: 0; letter-spacing: -0.01em; }
+.edit-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px 16px; }
+.edit-head p { margin: 0; color: var(--muted); font-size: .95rem; }
+.list { display: flex; flex-direction: column; gap: 12px; }
+.row { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+.row.current { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.rowhead { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.num { font-size: .78rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.rm { border: 0; background: transparent; color: var(--danger); font: 600 .9rem var(--font-body); cursor: pointer; padding: 4px 6px; border-radius: 6px; }
+.rm:disabled { opacity: .35; cursor: not-allowed; }
+.fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field span { font-size: .8rem; font-weight: 600; color: var(--muted); }
+.field textarea {
+  width: 100%; min-height: 76px; resize: vertical;
+  border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+  background: var(--bg); color: var(--ink); font: 500 1rem/1.4 var(--font-body);
+}
+.actions { display: flex; flex-wrap: wrap; gap: 10px; }
+
+@media (max-width: 560px) {
+  .fields { grid-template-columns: 1fr; }
+  .face { padding: 40px 18px 18px; }
+  .nav .count { width: 100%; margin-left: 0; order: -1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .inner { transition-duration: .01s; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Flip Deck</h1>
+    <p class="sub">Tap the card to flip it. Set the timer to flip it for you.</p>
+  </header>
+
+  <section class="controls" aria-label="Timer settings">
+    <div class="secs">
+      <label for="secs">Flip after</label>
+      <div class="stepper">
+        <button type="button" id="minus" aria-label="One second less">-</button>
+        <input id="secs" type="number" min="1" max="120" step="1" value="5" inputmode="numeric">
+        <button type="button" id="plus" aria-label="One second more">+</button>
+      </div>
+      <span>seconds</span>
+    </div>
+    <label class="check" for="autoFlip"><input type="checkbox" id="autoFlip" checked> Auto-flip</label>
+    <label class="check" for="autoNext"><input type="checkbox" id="autoNext" checked> Then go to next card</label>
+  </section>
+
+  <section class="stage" aria-label="Card">
+    <div class="scene">
+      <div class="card" id="card" role="button" tabindex="0" aria-label="Flip card">
+        <div class="inner">
+          <div class="face front"><span class="tag">Front</span><div class="txt" id="frontTxt"></div></div>
+          <div class="face back"><span class="tag">Back</span><div class="txt" id="backTxt"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="timerline">
+      <div class="track"><div class="bar" id="bar"></div></div>
+      <div class="status"><span id="status"></span><span id="count"></span></div>
+    </div>
+    <div class="nav">
+      <button class="btn" type="button" id="prev">Previous</button>
+      <button class="btn primary" type="button" id="flip">Flip</button>
+      <button class="btn" type="button" id="next">Next</button>
+      <button class="btn" type="button" id="shuffle">Shuffle</button>
+    </div>
+  </section>
+
+  <section class="edit" aria-label="Edit cards">
+    <div class="edit-head">
+      <h2>Your cards</h2>
+      <p>Type a word, definition or question on the front. Type the answer on the back.</p>
+    </div>
+    <div class="list" id="list"></div>
+    <div class="actions">
+      <button class="btn primary" type="button" id="add">Add card</button>
+      <button class="btn danger" type="button" id="reset">Reset to examples</button>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  var KEY = 'flipdeck.v1';
+  var nextId = 1;
+  function mk(f, b) { return { id: nextId++, f: f, b: b }; }
+
+  var EXAMPLES = [
+    ['noun', 'A word for a person, place or thing'],
+    ['What do we call a word for an action?', 'A verb'],
+    ['adjective', 'A word that describes a noun, like big or red'],
+    ['What is the plural of child?', 'Children'],
+    ['What is the opposite of hot?', 'Cold'],
+    ['She ___ to school every day. (go)', 'goes']
+  ];
+
+  var state = {
+    cards: EXAMPLES.map(function (p) { return mk(p[0], p[1]); }),
+    idx: 0, side: 0, secs: 5, autoFlip: true, autoNext: true, left: 5000
+  };
+
+  function load() {
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (!raw) return;
+      var d = JSON.parse(raw);
+      if (d && Array.isArray(d.cards) && d.cards.length) {
+        state.cards = d.cards.map(function (c) { return mk(String(c.f || ''), String(c.b || '')); });
+      }
+      if (typeof d.secs === 'number' && d.secs >= 1 && d.secs <= 120) state.secs = Math.round(d.secs);
+      if (typeof d.autoFlip === 'boolean') state.autoFlip = d.autoFlip;
+      if (typeof d.autoNext === 'boolean') state.autoNext = d.autoNext;
+    } catch (e) {}
+    state.left = state.secs * 1000;
+  }
+  function save() {
+    try {
+      localStorage.setItem(KEY, JSON.stringify({
+        cards: state.cards.map(function (c) { return { f: c.f, b: c.b }; }),
+        secs: state.secs, autoFlip: state.autoFlip, autoNext: state.autoNext
+      }));
+    } catch (e) {}
+  }
+
+  var $ = function (id) { return document.getElementById(id); };
+  var card = $('card'), frontTxt = $('frontTxt'), backTxt = $('backTxt');
+  var bar = $('bar'), statusEl = $('status'), countEl = $('count');
+  var secsIn = $('secs'), autoFlipIn = $('autoFlip'), autoNextIn = $('autoNext');
+  var listEl = $('list');
+  var textTimer = null;
+
+  function sizeClass(s) { return s.length > 140 ? 'txt xl' : s.length > 60 ? 'txt long' : 'txt'; }
+
+  function renderTexts() {
+    var c = state.cards[state.idx];
+    frontTxt.textContent = c.f || '(empty)';
+    backTxt.textContent = c.b || '(empty)';
+    frontTxt.className = sizeClass(c.f);
+    backTxt.className = sizeClass(c.b);
+    countEl.textContent = (state.idx + 1) + ' / ' + state.cards.length;
+    markCurrent();
+  }
+
+  function renderSide() {
+    card.classList.toggle('flipped', state.side === 1);
+    card.setAttribute('aria-label', 'Flip card. Showing the ' + (state.side ? 'back' : 'front') + '.');
+  }
+
+  function resetTimer() { state.left = state.secs * 1000; updateTimerUI(); }
+
+  function go(i) {
+    var n = state.cards.length;
+    var wasBack = state.side === 1;
+    state.idx = ((i % n) + n) % n;
+    state.side = 0;
+    renderSide();
+    clearTimeout(textTimer);
+    if (wasBack) {
+      countEl.textContent = (state.idx + 1) + ' / ' + n;
+      textTimer = setTimeout(renderTexts, 300);
+    } else {
+      renderTexts();
+    }
+    resetTimer();
+  }
+
+  function flip() {
+    state.side = state.side ? 0 : 1;
+    renderSide();
+    resetTimer();
+  }
+
+  function updateTimerUI() {
+    var total = state.secs * 1000;
+    var finished = state.autoFlip && state.left <= 0;
+    bar.style.transform = 'scaleX(' + (state.autoFlip ? Math.max(0, state.left / total) : 0) + ')';
+    bar.classList.toggle('onback', state.side === 1);
+    if (!state.autoFlip) { statusEl.textContent = 'Auto-flip is off'; return; }
+    if (finished) { statusEl.textContent = 'Timer finished'; return; }
+    var s = Math.ceil(state.left / 1000);
+    if (state.side === 0) statusEl.textContent = 'Flips in ' + s + 's';
+    else statusEl.textContent = state.autoNext ? 'Next card in ' + s + 's' : 'Showing the answer';
+  }
+
+  var last = performance.now();
+  setInterval(function () {
+    var now = performance.now();
+    var dt = Math.min(now - last, 500);
+    last = now;
+    if (!state.autoFlip || state.left <= 0) return;
+    state.left -= dt;
+    if (state.left <= 0) {
+      if (state.side === 0) {
+        state.side = 1;
+        renderSide();
+        state.left = state.secs * 1000;
+      } else if (state.autoNext) {
+        go(state.idx + 1);
+        return;
+      } else {
+        state.left = 0;
+      }
+    }
+    updateTimerUI();
+  }, 100);
+
+  /* Edit list */
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  function field(label, id, value, key, cid) {
+    var wrap = el('label', 'field');
+    wrap.setAttribute('for', id);
+    wrap.appendChild(el('span', null, label));
+    var ta = el('textarea');
+    ta.id = id;
+    ta.value = value;
+    ta.setAttribute('data-key', key);
+    ta.setAttribute('data-id', cid);
+    wrap.appendChild(ta);
+    return wrap;
+  }
+
+  function renderList() {
+    listEl.textContent = '';
+    state.cards.forEach(function (c, i) {
+      var row = el('div', 'row');
+      row.setAttribute('data-row', c.id);
+      var head = el('div', 'rowhead');
+      head.appendChild(el('span', 'num', 'Card ' + (i + 1)));
+      var rm = el('button', 'rm', 'Remove');
+      rm.type = 'button';
+      rm.setAttribute('data-rm', c.id);
+      rm.disabled = state.cards.length === 1;
+      head.appendChild(rm);
+      row.appendChild(head);
+      var fields = el('div', 'fields');
+      fields.appendChild(field('Front', 'f-' + c.id, c.f, 'f', c.id));
+      fields.appendChild(field('Back', 'b-' + c.id, c.b, 'b', c.id));
+      row.appendChild(fields);
+      listEl.appendChild(row);
+    });
+    markCurrent();
+  }
+
+  function markCurrent() {
+    var cur = state.cards[state.idx];
+    Array.prototype.forEach.call(listEl.children, function (r) {
+      r.classList.toggle('current', cur && r.getAttribute('data-row') === String(cur.id));
+    });
+  }
+
+  listEl.addEventListener('input', function (e) {
+    var t = e.target;
+    if (!t.matches('textarea')) return;
+    var id = Number(t.getAttribute('data-id'));
+    var key = t.getAttribute('data-key');
+    var c = state.cards.filter(function (x) { return x.id === id; })[0];
+    if (!c) return;
+    c[key] = t.value;
+    save();
+    if (state.cards[state.idx] === c) renderTexts();
+  });
+
+  listEl.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-rm]');
+    if (!b || state.cards.length === 1) return;
+    var id = Number(b.getAttribute('data-rm'));
+    var pos = state.cards.findIndex(function (x) { return x.id === id; });
+    state.cards.splice(pos, 1);
+    if (pos < state.idx) state.idx--;
+    if (state.idx >= state.cards.length) state.idx = state.cards.length - 1;
+    state.side = 0;
+    renderSide(); renderList(); renderTexts(); resetTimer(); save();
+  });
+
+  /* Controls */
+  function setSecs(v) {
+    v = Math.round(Number(v));
+    if (!isFinite(v)) v = state.secs;
+    v = Math.min(120, Math.max(1, v));
+    state.secs = v;
+    secsIn.value = v;
+    resetTimer();
+    save();
+  }
+  secsIn.addEventListener('change', function () { setSecs(secsIn.value); });
+  $('minus').addEventListener('click', function () { setSecs(state.secs - 1); });
+  $('plus').addEventListener('click', function () { setSecs(state.secs + 1); });
+  autoFlipIn.addEventListener('change', function () { state.autoFlip = autoFlipIn.checked; resetTimer(); save(); });
+  autoNextIn.addEventListener('change', function () { state.autoNext = autoNextIn.checked; resetTimer(); save(); });
+
+  card.addEventListener('click', flip);
+  $('flip').addEventListener('click', flip);
+  $('next').addEventListener('click', function () { go(state.idx + 1); });
+  $('prev').addEventListener('click', function () { go(state.idx - 1); });
+
+  $('shuffle').addEventListener('click', function () {
+    var a = state.cards;
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    state.idx = 0; state.side = 0;
+    renderSide(); renderList(); renderTexts(); resetTimer(); save();
+  });
+
+  $('add').addEventListener('click', function () {
+    var c = mk('', '');
+    state.cards.push(c);
+    renderList(); renderTexts(); save();
+    var ta = $('f-' + c.id);
+    if (ta) ta.focus();
+  });
+
+  var resetBtn = $('reset'), resetArm = null;
+  resetBtn.addEventListener('click', function () {
+    if (!resetArm) {
+      resetBtn.textContent = 'Tap again to replace all cards';
+      resetArm = setTimeout(function () { resetBtn.textContent = 'Reset to examples'; resetArm = null; }, 3000);
+      return;
+    }
+    clearTimeout(resetArm); resetArm = null;
+    resetBtn.textContent = 'Reset to examples';
+    state.cards = EXAMPLES.map(function (p) { return mk(p[0], p[1]); });
+    state.idx = 0; state.side = 0;
+    renderSide(); renderList(); renderTexts(); resetTimer(); save();
+  });
+
+  document.addEventListener('keydown', function (e) {
+    var tag = (e.target && e.target.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
+    if (e.key === 'ArrowRight') { e.preventDefault(); go(state.idx + 1); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); go(state.idx - 1); }
+    else if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); flip(); }
+  });
+
+  load();
+  secsIn.value = state.secs;
+  autoFlipIn.checked = state.autoFlip;
+  autoNextIn.checked = state.autoNext;
+  renderList();
+  renderTexts();
+  renderSide();
+  updateTimerUI();
+})();
+</script>
+</body>
+</html>
